@@ -3,3 +3,5 @@ google-generativeai
 flask
 python-dotenv
 requests
+qrcode
+pillow
