@@ -10,11 +10,28 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# --- CONFIGURARE AI ---
-# Folosim numele complet al modelului: models/gemini-1.5-flash
+# --- CONFIGURARE AI ACTUALIZATĂ ---
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('models/gemini-1.5-flash')
+
+# Listă de modele de rezervă în caz de 404
+AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+
+def get_ai_response(content):
+    """Încearcă să obțină răspuns folosind modele diferite dacă primul eșuează"""
+    for model_name in AVAILABLE_MODELS:
+        try:
+            print(f"DEBUG: Încercare model {model_name}...")
+            m = genai.GenerativeModel(model_name)
+            response = m.generate_content(content)
+            return response.text.strip()
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                print(f"DEBUG: Modelul {model_name} nu a fost găsit, încerc următorul...")
+                continue
+            else:
+                raise e
+    return "Eroare: Niciun model Gemini nu este disponibil în acest moment."
 
 # --- CONFIGURARE BOT ---
 # Asigură-te că ai setat numărul tău aici sau în variabilele de mediu
@@ -126,7 +143,7 @@ def run_wa_bridge():
             bot_status = "CONECTAT"
             pairing_code = "CONECTAT"
 
-        elif "PYTHON_EVENT:MSG_IN|" in line:
+       elif "PYTHON_EVENT:MSG_IN|" in line:
             try:
                 parts = line.split('PYTHON_EVENT:MSG_IN|')[1].split('|')
                 jid = parts[0]
@@ -135,7 +152,6 @@ def run_wa_bridge():
 
                 print(f"📩 Procesare cerere /bot de la {jid}")
 
-                # Pregătim input-ul multimodal pentru Gemini
                 content_payload = []
                 if img_data:
                     content_payload.append({
@@ -144,17 +160,15 @@ def run_wa_bridge():
                     })
                 content_payload.append(user_prompt)
 
-                # Generăm răspunsul
-                response = model.generate_content(content_payload)
-                ai_text = response.text.strip()
+                # Folosim funcția de fallback creată mai sus
+                ai_text = get_ai_response(content_payload)
 
-                # Trimitem răspunsul înapoi la WhatsApp
                 reply_cmd = json.dumps({"action": "send", "to": jid, "text": ai_text})
                 wa_process.stdin.write(reply_cmd + "\n")
                 wa_process.stdin.flush()
-                print(f"✅ Răspuns trimis!")
+                print(f"✅ Răspuns trimis cu succes!")
             except Exception as e:
-                print(f"❌ Eroare Gemini/Bridge: {e}")
+                print(f"❌ Eroare fatală Gemini: {e}")
 
 # --- DASHBOARD ---
 @app.route('/')
