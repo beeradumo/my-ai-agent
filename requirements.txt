@@ -1,7 +1,5 @@
-openclaw
 google-generativeai
-flask
 python-dotenv
-requests
+flask
 qrcode
 pillow
