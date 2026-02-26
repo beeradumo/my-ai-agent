@@ -57,16 +57,21 @@ def run_wa_bridge():
             }}
         }});
 
-        sock.ev.on('messages.upsert', async m => {{
-            const msg = m.messages[0];
-            if (!msg.key.fromMe && msg.message) {{
-                const from = msg.key.remoteJid;
-                const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-                if (text) {{
-                    console.log('MSG_IN:' + from + '|' + text);
-                }}
-            }}
-        }});
+        sock.ev.on('messages.upsert', async m => {
+        const msg = m.messages[0];
+        if (!msg.key.fromMe && msg.message) {
+            const from = msg.key.remoteJid;
+            // Verificăm toate tipurile de mesaje text
+            const text = msg.message.conversation || 
+                         msg.message.extendedTextMessage?.text || 
+                         msg.message.imageMessage?.caption;
+            
+            if (text) {
+                // IMPORTANT: Folosim un prefix clar pe care Python să-l recunoască
+                console.log('PYTHON_EVENT:MSG_IN|' + from + '|' + text);
+            }
+        }
+    });
 
         // Ascultă comenzi de la Python (stdin)
         process.stdin.on('data', async (data) => {{
@@ -95,32 +100,27 @@ def run_wa_bridge():
 
     for line in wa_process.stdout:
         line = line.strip()
-        print(f"LOG: {line}") # Debug în Railway Logs
+        print(f"RAW_LOG: {line}") # Verifică asta în Railway Logs!
 
-        if "PAIRING_CODE:" in line:
-            pairing_code = line.split("PAIRING_CODE:")[1]
-            bot_status = "Așteptare Pairing..."
-        
-        elif "BOT_STATUS:CONNECTED" in line:
-            bot_status = "CONECTAT"
-            pairing_code = "CONECTAT"
-
-        elif "MSG_IN:" in line:
+        if "PYTHON_EVENT:MSG_IN|" in line:
             try:
-                # Format: MSG_IN:jid|text
-                data_part = line.replace("MSG_IN:", "")
-                jid, user_msg = data_part.split('|', 1)
+                # Extragem datele: PYTHON_EVENT:MSG_IN|jid|text
+                _, content = line.split('PYTHON_EVENT:MSG_IN|')
+                jid, user_msg = content.split('|', 1)
                 
-                # Generare răspuns cu Gemini
-                response = model.generate_content(f"Răspunde scurt și prietenos în română: {user_msg}")
-                ai_text = response.text
+                print(f"📩 Mesaj detectat de la {jid}: {user_msg}")
 
-                # Trimitere înapoi la WhatsApp prin stdin-ul procesului Node
-                reply_cmd = json.dumps({"action": "send", "to": jid, "text": ai_text})
-                wa_process.stdin.write(reply_cmd + "\n")
+                # Generare răspuns Gemini
+                response = model.generate_content(f"Răspunde foarte scurt: {user_msg}")
+                ai_text = response.text.strip()
+
+                # Trimitere înapoi
+                reply_dict = {"action": "send", "to": jid, "text": ai_text}
+                wa_process.stdin.write(json.dumps(reply_dict) + "\n")
                 wa_process.stdin.flush()
+                print(f"🤖 Răspuns trimis către {jid}")
             except Exception as e:
-                print(f"Eroare procesare mesaj: {e}")
+                print(f"❌ Eroare procesare: {e}")
 
 # --- FLASK DASHBOARD ---
 
