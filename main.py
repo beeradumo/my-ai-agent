@@ -3,6 +3,25 @@ from flask import Flask, send_file, render_template_string, request
 import google.generativeai as genai
 import qrcode
 from io import BytesIO
+from neon_api_wa import Client
+
+# Inițializăm clientul WhatsApp
+wa_client = Client(session_path="/app/session")
+
+@wa_client.on_message
+def handle_whatsapp(message):
+    # Când primim un mesaj pe WhatsApp
+    user_input = message.body
+    
+    # Întrebăm Gemini
+    response = model.generate_content(f"Răspunde scurt la: {user_input}")
+    
+    # Trimitem înapoi pe WhatsApp
+    message.reply(response.text)
+
+# Pornim clientul într-un thread separat
+import threading
+threading.Thread(target=wa_client.run).start()
 
 app = Flask(__name__)
 
