@@ -1,32 +1,22 @@
-FROM python:3.11-slim
-
-# Instalăm dependențele pentru browser (Chromium)
-RUN apt-get update && apt-get install -y \
-    curl \
-    ca-certificates \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    && rm -rf /var/lib/apt/lists/*
+FROM nikolaik/python-nodejs:python3.11-nodejs20-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-# Instalăm playwright (motorul care va rula WhatsApp Web)
-RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install --with-deps chromium
+# Instalăm dependențele de sistem pentru imagini
+RUN apt-get update && apt-get install -y libvips-dev && rm -rf /var/lib/apt/lists/*
 
+# Instalăm motorul de WhatsApp (Baileys)
+RUN npm install @whiskeysockets/baileys qrcode terminal-kit
+
+# Instalăm dependențele Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiem restul fișierelor
 COPY . .
+
+# Expunem portul pentru Railway
+ENV PORT=8080
+EXPOSE 8080
 
 CMD ["python", "main.py"]
