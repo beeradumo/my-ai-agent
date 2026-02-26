@@ -7,3 +7,5 @@ pillow
 python-dotenv
 neon-api-wa  
 python-socketio
+playwright
+playwright-stealth
