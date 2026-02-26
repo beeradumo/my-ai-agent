@@ -1,24 +1,27 @@
 FROM python:3.11-slim
 
-# Instalăm dependențele minime de sistem
+# Instalăm dependențele minime. Am scos 'sudo' ca să evităm erorile de permisiuni.
 RUN apt-get update && apt-get install -y \
-    curl git gcc python3-dev \
+    curl \
+    ca-certificates \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# În loc de scriptul .sh, instalăm framework-ul direct de pe repository-ul lor
-# Notă: Aceasta este metoda recomandată pentru deployment-uri de server
-RUN pip install --no-cache-dir curl https://openclaw.ai/install.sh | bash
+# Metoda alternativă: Descărcăm scriptul, dar îl "curățăm" de sudo înainte de rulare
+RUN curl -fsSL https://openclaw.ai/install.sh -o install.sh && \
+    sed -i 's/sudo //g' install.sh && \
+    sh install.sh
 
-# Copiem restul dependențelor
+# Forțăm instalarea librăriei de bază dacă scriptul a eșuat silențios
+# Dacă 'openclaw' nu e în pip, îl instalăm ca modul local din ce a descărcat scriptul
+ENV PYTHONPATH="${PYTHONPATH}:/root/.openclaw/lib"
+ENV PATH="/root/.openclaw/bin:${PATH}"
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiem codul sursă
 COPY . .
-
-# Setăm variabila de mediu pentru a vedea logurile în timp real
-ENV PYTHONUNBUFFERED=1
 
 CMD ["python", "main.py"]
