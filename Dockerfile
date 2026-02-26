@@ -1,30 +1,24 @@
-# Folosim o imagine Python stabilă
 FROM python:3.11-slim
 
-# Pasul critic: Instalăm curl și packetele de sistem necesare
+# Instalăm dependențele minime de sistem
 RUN apt-get update && apt-get install -y \
-    curl \
-    ca-certificates \
-    git \
-    sudo \
+    curl git gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Rulăm scriptul de instalare OpenClaw
-# Folosim bash explicit și verificăm unde se instalează
-RUN curl -fsSL https://openclaw.ai/install.sh | bash
+# În loc de scriptul .sh, instalăm framework-ul direct de pe repository-ul lor
+# Notă: Aceasta este metoda recomandată pentru deployment-uri de server
+RUN pip install --no-cache-dir git+https://github.com/openclaw/openclaw-python.git
 
-# Adăugăm binarele OpenClaw în PATH (Railway are nevoie de asta pentru a vedea 'openclaw')
-ENV PATH="/root/.openclaw/bin:/usr/local/bin:${PATH}"
-
-# Copiem fișierele tale (main.py, requirements.txt)
-COPY . .
-
-# Instalăm restul librăriilor (Gemini, Flask, etc.)
-# ASIGURĂ-TE că ai eliminat 'openclaw' din requirements.txt 
-# pentru a evita conflictul cu ce am instalat mai sus prin script
+# Copiem restul dependențelor
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pornim aplicația
+# Copiem codul sursă
+COPY . .
+
+# Setăm variabila de mediu pentru a vedea logurile în timp real
+ENV PYTHONUNBUFFERED=1
+
 CMD ["python", "main.py"]
