@@ -7,6 +7,40 @@ from openclaw import Agent
 
 app = Flask(__name__)
 
+# Calea către volumul persistent din Railway
+SESSION_PATH = "/app/session/whatsapp_auth"
+
+# Configurăm Gemini
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# Presupunem că folosim un client de WhatsApp integrat în OpenClaw
+# Vom simula verificarea stării conexiunii
+def is_whatsapp_connected():
+    # Verifică dacă folderul de sesiune există și are date
+    return os.path.exists(SESSION_PATH) and len(os.listdir(SESSION_PATH)) > 0
+
+@app.route('/login')
+def login_page():
+    if is_whatsapp_connected():
+        return "<h1>Securizat: Instanța este deja activă și conectată.</h1>", 403
+    
+    return render_template_string('''
+        <h1>Conectare Securizată OpenClaw</h1>
+        <div id="qr-container">
+            <img src="/get-qr" alt="QR Code">
+        </div>
+        <script>
+            // Refresh automat pagina la 30 secunde pentru un nou QR dacă nu s-a scanat
+            setTimeout(() => { location.reload(); }, 30000);
+        </script>
+    ''')
+
+@app.route('/get-qr')
+def get_qr():
+    if is_whatsapp_connected():
+        return "Acces interzis", 403
+
 # Stocăm sesiunea WhatsApp aici (pe Railway, ai nevoie de un volum persistent pentru a nu scana QR-ul la fiecare restart)
 SESSION_DATA = "/app/session.json"
 
@@ -29,8 +63,6 @@ def login_page():
         <img src="/get-qr" alt="QR Code">
         <p>După scanare, asistentul tău Gemini va fi activ pe acest număr.</p>
     ''')
-
-# Restul logicii tale cu Gemini...
 
 # Configurare Gemini
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
