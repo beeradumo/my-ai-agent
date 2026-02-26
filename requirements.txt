@@ -2,3 +2,4 @@ openclaw
 google-generativeai
 flask
 python-dotenv
+requests
