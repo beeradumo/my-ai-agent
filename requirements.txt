@@ -1,0 +1,4 @@
+openclaw
+google-generativeai
+flask
+python-dotenv
