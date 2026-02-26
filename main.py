@@ -18,7 +18,7 @@ model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # --- CONFIGURARE BOT ---
 # Asigură-te că ai setat numărul tău aici sau în variabilele de mediu
-MY_PHONE = os.environ.get("MY_PHONE", "407XXXXXXXX") 
+MY_PHONE = os.environ.get("MY_PHONE", "40753873825") 
 pairing_code = "Se generează..."
 bot_status = "Inițializare..."
 wa_process = None
