@@ -6,3 +6,4 @@ qrcode
 pillow
 python-dotenv
 neon-api-wa  
+python-socketio
