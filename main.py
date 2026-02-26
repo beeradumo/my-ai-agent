@@ -2,6 +2,8 @@ import os
 from openclaw.tools import GmailTool, WhatsAppTool # Presupunem că folosim conectorii lor
 import google.generativeai as genai
 from openclaw.agents import Agent
+import openclaw
+print("OpenClaw location:", openclaw.__file__)
 
 # 1. Configurăm "Creierul" (Gemini)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
