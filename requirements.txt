@@ -1,6 +1,7 @@
 google-generativeai
-python-dotenv
+langchain
+langchain-google-genai
 flask
 qrcode
 pillow
-requests
+python-dotenv
