@@ -3,3 +3,4 @@ python-dotenv
 flask
 qrcode
 pillow
+requests
