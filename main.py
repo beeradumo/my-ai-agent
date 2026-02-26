@@ -18,20 +18,41 @@ genai.configure(api_key=GEMINI_KEY)
 AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
 
 def get_ai_response(content):
-    """Încearcă să obțină răspuns de la Gemini folosind modele alternative în caz de 404"""
-    for model_name in AVAILABLE_MODELS:
+    """Încearcă să obțină răspuns cu logare detaliată a erorilor"""
+    # Încercăm întâi modelele cele mai probabile să fie active
+    test_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
+    
+    last_error = ""
+    for model_name in test_models:
         try:
             print(f"DEBUG: Încercare model {model_name}...")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(content)
-            return response.text.strip()
+            # Forțăm modelul fără prefixul 'models/' dacă dădea 404 înainte
+            model = genai.GenerativeModel(
+                model_name=model_name
+            )
+            
+            # Adăugăm un timeout și configurare de bază
+            response = model.generate_content(
+                content,
+                generation_config=genai.types.GenerationConfig(
+                    candidate_count=1,
+                    stop_sequences=['x'],
+                    max_output_tokens=500,
+                    temperature=0.7
+                )
+            )
+            
+            if response and response.text:
+                return response.text.strip()
+                
         except Exception as e:
-            err_str = str(e).lower()
-            if "404" in err_str or "not found" in err_str:
-                continue
-            else:
-                return f"Eroare API: {str(e)}"
-    return "Eroare: Niciun model Gemini nu a putut fi accesat."
+            last_error = str(e)
+            print(f"DEBUG: Eșec cu {model_name}: {last_error}")
+            continue
+            
+    # Dacă ajungem aici, înseamnă că toate au eșuat. 
+    # Trimitem eroarea reală pe WhatsApp ca să știm ce să reparăm.
+    return f"🤖 Eroare tehnică Google AI: {last_error[:100]}"
 
 # --- CONFIGURARE BOT ---
 MY_PHONE = os.environ.get("MY_PHONE", "40753873825") # Pune numărul tău aici
