@@ -5,3 +5,4 @@ flask
 qrcode
 pillow
 python-dotenv
+neon-api-wa  
