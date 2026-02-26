@@ -1,11 +1,5 @@
 google-generativeai
-langchain
-langchain-google-genai
 flask
 qrcode
 pillow
 python-dotenv
-neon-api-wa  
-python-socketio
-playwright
-playwright-stealth
