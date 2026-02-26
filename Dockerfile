@@ -9,7 +9,7 @@ WORKDIR /app
 
 # În loc de scriptul .sh, instalăm framework-ul direct de pe repository-ul lor
 # Notă: Aceasta este metoda recomandată pentru deployment-uri de server
-RUN pip install --no-cache-dir git+https://github.com/openclaw/openclaw-python.git
+RUN pip install --no-cache-dir curl https://openclaw.ai/install.sh | bash
 
 # Copiem restul dependențelor
 COPY requirements.txt .
