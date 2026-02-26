@@ -1,13 +1,9 @@
 # Folosim Python 3.10 sau 3.11 pentru stabilitate cu AI
 FROM python:3.11-slim
 
-# Instalăm dependențele de sistem necesare pentru scriptul de install și OpenClaw
-RUN apt-get update && apt-get install -y \
-    curl \
-    git \
-    sudo \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# În loc de simplu bash, încercăm să-l forțăm în PATH-ul python
+RUN curl -fsSL https://openclaw.ai/install.sh | bash && \
+    cp -r /root/.openclaw/* /app/  # Exemplu: forțăm mutarea fișierelor unde e codul tău
 
 WORKDIR /app
 
