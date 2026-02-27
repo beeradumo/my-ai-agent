@@ -34,7 +34,7 @@ def get_ai_response(content):
 
 # --- CONFIGURARE BOT ---
 # Asigură-te că numărul este format din cifre, fără + (ex: 40722111222)
-MY_PHONE = "407XXXXXXXX" 
+MY_PHONE = "40753873825" 
 pairing_code = "Se generează..."
 bot_status = "Inițializare..."
 wa_process = None
