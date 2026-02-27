@@ -4,58 +4,39 @@ import threading
 import json
 import base64
 from io import BytesIO
-import qrcode
 from flask import Flask, render_template_string
 import google.generativeai as genai
+from google.api_core import client_options
 
 app = Flask(__name__)
 
 # --- CONFIGURARE AI ---
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_KEY)
 
-# Listă de modele de rezervă pentru a evita eroarea 404
-AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+# Forțăm utilizarea API v1 pentru a evita eroarea 404 (v1beta)
+my_options = client_options.ClientOptions(api_endpoint="generativelanguage.googleapis.com")
+genai.configure(api_key=GEMINI_KEY, client_options=my_options)
 
 def get_ai_response(content):
-    """Încearcă să obțină răspuns cu logare detaliată a erorilor"""
-    # Încercăm întâi modelele cele mai probabile să fie active
-    test_models = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro']
+    """Obține răspuns de la Gemini cu fallback pentru numele modelului"""
+    # Încercăm variantele de nume cele mai comune
+    model_names = ['gemini-1.5-flash', 'models/gemini-1.5-flash']
     
-    last_error = ""
-    for model_name in test_models:
+    last_err = ""
+    for m_name in model_names:
         try:
-            print(f"DEBUG: Încercare model {model_name}...")
-            # Forțăm modelul fără prefixul 'models/' dacă dădea 404 înainte
-            model = genai.GenerativeModel(
-                model_name=model_name
-            )
-            
-            # Adăugăm un timeout și configurare de bază
-            response = model.generate_content(
-                content,
-                generation_config=genai.types.GenerationConfig(
-                    candidate_count=1,
-                    stop_sequences=['x'],
-                    max_output_tokens=500,
-                    temperature=0.7
-                )
-            )
-            
+            model = genai.GenerativeModel(model_name=m_name)
+            response = model.generate_content(content)
             if response and response.text:
                 return response.text.strip()
-                
         except Exception as e:
-            last_error = str(e)
-            print(f"DEBUG: Eșec cu {model_name}: {last_error}")
+            last_err = str(e)
             continue
             
-    # Dacă ajungem aici, înseamnă că toate au eșuat. 
-    # Trimitem eroarea reală pe WhatsApp ca să știm ce să reparăm.
-    return f"🤖 Eroare tehnică Google AI: {last_error[:100]}"
+    return f"🤖 Eroare API Google: {last_err[:100]}"
 
 # --- CONFIGURARE BOT ---
-MY_PHONE = os.environ.get("MY_PHONE", "40753873825") # Pune numărul tău aici
+MY_PHONE = os.environ.get("MY_PHONE", "40753873825") # Schimbă cu numărul tău
 pairing_code = "Se generează..."
 bot_status = "Inițializare..."
 wa_process = None
@@ -68,7 +49,7 @@ def run_wa_bridge():
     const pino = require('pino');
 
     async function connect() {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_session_v3');
+        const { state, saveCreds } = await useMultiFileAuthState('auth_session_stable');
         const { version } = await fetchLatestBaileysVersion();
 
         const sock = makeWASocket({
@@ -86,6 +67,7 @@ def run_wa_bridge():
         }
 
         sock.ev.on('creds.update', saveCreds);
+
         sock.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect } = update;
             if (connection === 'open') console.log('BOT_STATUS:CONNECTED');
@@ -114,7 +96,7 @@ def run_wa_bridge():
                             for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
                             imgBase64 = buffer.toString('base64');
                         } catch (err) {
-                            console.log('DEBUG: Eroare imagine');
+                            console.log('DEBUG: Eroare descarcare imagine');
                         }
                     }
                     console.log('PYTHON_EVENT:MSG_IN|' + from + '|' + prompt + '|' + imgBase64);
@@ -153,23 +135,21 @@ def run_wa_bridge():
         if "PAIRING_CODE:" in line:
             pairing_code = line.split("PAIRING_CODE:")[1]
             bot_status = "Așteptare Pairing..."
-        
         elif "BOT_STATUS:CONNECTED" in line:
             bot_status = "CONECTAT"
             pairing_code = "CONECTAT"
-
         elif "PYTHON_EVENT:MSG_IN|" in line:
             try:
                 parts = line.split('PYTHON_EVENT:MSG_IN|')[1].split('|')
                 jid = parts[0]
-                prompt = parts[1] if parts[1] else "Analizează imaginea."
-                img_b64 = parts[2] if len(parts) > 2 else ""
+                prompt = parts[1] if parts[1] else "Analizează această imagine."
+                img_data = parts[2] if len(parts) > 2 else ""
 
                 print(f"📩 Procesare pentru {jid}")
-                
+
                 payload = []
-                if img_b64:
-                    payload.append({"mime_type": "image/jpeg", "data": base64.b64decode(img_b64)})
+                if img_data:
+                    payload.append({"mime_type": "image/jpeg", "data": base64.b64decode(img_data)})
                 payload.append(prompt)
 
                 ai_reply = get_ai_response(payload)
@@ -177,7 +157,7 @@ def run_wa_bridge():
                 reply_cmd = json.dumps({"action": "send", "to": jid, "text": ai_reply})
                 wa_process.stdin.write(reply_cmd + "\n")
                 wa_process.stdin.flush()
-                print("✅ Mesaj trimis!")
+                print(f"✅ Trimis către {jid}")
             except Exception as e:
                 print(f"❌ Eroare: {e}")
 
@@ -187,9 +167,9 @@ def dashboard():
     return render_template_string('''
         <body style="text-align: center; font-family: sans-serif; padding-top: 50px; background: #f0f2f5;">
             <div style="background: white; display: inline-block; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                <h1 style="color: #075E54;">WA Gemini v3</h1>
-                <p>Status: <strong>{{status}}</strong></p>
-                {% if code != "CONECTAT" and code != "Se generează..." %}
+                <h1 style="color: #075E54;">WhatsApp Gemini AI</h1>
+                <p>Status: <strong style="color: {{ 'green' if status == 'CONECTAT' else 'orange' }};">{{status}}</strong></p>
+                {% if status != "CONECTAT" and code != "Se generează..." %}
                     <div style="background: #e1ffeb; padding: 20px; border-radius: 10px; margin: 20px 0;">
                         <span style="font-size: 3em; letter-spacing: 5px; font-weight: bold; color: #128C7E;">{{code}}</span>
                     </div>
