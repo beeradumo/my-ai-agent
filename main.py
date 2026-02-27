@@ -1,61 +1,25 @@
-import os
-import subprocess
-import threading
-import json
-import base64
-from io import BytesIO
+import os, subprocess, threading, json, base64
 from flask import Flask, render_template_string
 import google.generativeai as genai
 from google.api_core import client_options
-import google.generativeai.types as types
 
 app = Flask(__name__)
 
-# --- CONFIGURARE AI ---
+# --- CONFIG AI ---
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-
-# Forțăm utilizarea API v1 pentru a evita eroarea 404 (v1beta)
 my_options = client_options.ClientOptions(api_endpoint="generativelanguage.googleapis.com")
 genai.configure(api_key=GEMINI_KEY, client_options=my_options)
 
 def get_ai_response(content):
-    """Bypass total pentru v1beta - forțare protocol stabil v1"""
     try:
-        # Configurăm modelul direct pe varianta stabilă
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Forțăm cererea prin API-ul de bază (v1)
-        # Uneori eroarea 404 apare pentru că biblioteca 'ghicește' greșit versiunea
-        response = model.generate_content(
-            content,
-            # Această setare forțează un comportament standard
-            generation_config=types.GenerationConfig(
-                temperature=0.7,
-            )
-        )
-        
-        if response and response.text:
-            return response.text.strip()
-        return "🤖 Gemini nu a putut genera un text valid."
-        
+        response = model.generate_content(content)
+        return response.text.strip() if response.text else "🤖 Fără răspuns."
     except Exception as e:
-        err_msg = str(e)
-        print(f"DEBUG: Eroare API: {err_msg}")
-        
-        # Dacă tot dă 404, înseamnă că API Key-ul tău are nevoie de prefixul 'models/' explicit
-        if "404" in err_msg:
-            try:
-                # Ultimul efort: apel direct fără detectare automată
-                m_direct = genai.GenerativeModel('models/gemini-1.5-flash')
-                return m_direct.generate_content(content).text
-            except Exception as e2:
-                # Aici afișăm eroarea brută pentru diagnostic final
-                return f"🤖 Eroare critică (Verifică regiunea sau cheia): {str(e2)[:100]}"
-        
-        return f"🤖 Eroare: {err_msg[:100]}"
+        return f"🤖 Eroare: {str(e)[:50]}"
 
-# --- CONFIGURARE BOT ---
-MY_PHONE = os.environ.get("MY_PHONE", "40753873825") # Schimbă cu numărul tău
+# --- CONFIG BOT ---
+MY_PHONE = "40753873825" # PUNE NUMĂRUL TĂU AICI
 pairing_code = "Se generează..."
 bot_status = "Inițializare..."
 wa_process = None
@@ -63,12 +27,13 @@ wa_process = None
 def run_wa_bridge():
     global pairing_code, bot_status, wa_process
     
+    # Am schimbat folderul de sesiune în 'session_reset_now' pentru a forța un cod nou
     node_code = """
     const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion, DisconnectReason, downloadContentFromMessage } = require('@whiskeysockets/baileys');
     const pino = require('pino');
 
     async function connect() {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_session_stable');
+        const { state, saveCreds } = await useMultiFileAuthState('session_reset_now'); 
         const { version } = await fetchLatestBaileysVersion();
 
         const sock = makeWASocket({
@@ -80,77 +45,53 @@ def run_wa_bridge():
         });
 
         if (!sock.authState.creds.registered) {
-            await delay(5000);
+            await delay(3000);
             const code = await sock.requestPairingCode('REPLACE_WITH_PHONE');
             console.log('PAIRING_CODE:' + code);
         }
 
         sock.ev.on('creds.update', saveCreds);
-
-        sock.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect } = update;
-            if (connection === 'open') console.log('BOT_STATUS:CONNECTED');
-            if (connection === 'close') {
-                const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) connect();
-            }
+        sock.ev.on('connection.update', (u) => {
+            if (u.connection === 'open') console.log('BOT_STATUS:CONNECTED');
+            if (u.connection === 'close') connect();
         });
 
         sock.ev.on('messages.upsert', async m => {
             const msg = m.messages[0];
             if (!msg.key.fromMe && msg.message) {
                 const from = msg.key.remoteJid;
-                const text = msg.message.conversation || 
-                             msg.message.extendedTextMessage?.text || 
-                             msg.message.imageMessage?.caption || "";
-
+                const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
                 if (text.toLowerCase().startsWith('/bot')) {
                     const prompt = text.replace('/bot', '').trim();
                     let imgBase64 = "";
-
                     if (msg.message.imageMessage) {
-                        try {
-                            const stream = await downloadContentFromMessage(msg.message.imageMessage, 'image');
-                            let buffer = Buffer.from([]);
-                            for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
-                            imgBase64 = buffer.toString('base64');
-                        } catch (err) {
-                            console.log('DEBUG: Eroare descarcare imagine');
-                        }
+                        const stream = await downloadContentFromMessage(msg.message.imageMessage, 'image');
+                        let buffer = Buffer.from([]);
+                        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
+                        imgBase64 = buffer.toString('base64');
                     }
                     console.log('PYTHON_EVENT:MSG_IN|' + from + '|' + prompt + '|' + imgBase64);
                 }
             }
         });
 
-        process.stdin.on('data', async (data) => {
+        process.stdin.on('data', async (d) => {
             try {
-                const cmd = JSON.parse(data.toString());
-                if (cmd.action === 'send') {
-                    await sock.sendMessage(cmd.to, { text: cmd.text });
-                }
+                const cmd = JSON.parse(d.toString());
+                if (cmd.action === 'send') await sock.sendMessage(cmd.to, { text: cmd.text });
             } catch (e) {}
         });
     }
     connect();
     """.replace("REPLACE_WITH_PHONE", MY_PHONE)
     
-    with open("bridge.js", "w") as f:
-        f.write(node_code)
+    with open("bridge.js", "w") as f: f.write(node_code)
 
-    wa_process = subprocess.Popen(
-        ["node", "bridge.js"], 
-        stdout=subprocess.PIPE, 
-        stdin=subprocess.PIPE, 
-        stderr=subprocess.STDOUT, 
-        text=True,
-        bufsize=1
-    )
+    wa_process = subprocess.Popen(["node", "bridge.js"], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
     for line in wa_process.stdout:
         line = line.strip()
         print(f"RAW: {line}")
-
         if "PAIRING_CODE:" in line:
             pairing_code = line.split("PAIRING_CODE:")[1]
             bot_status = "Așteptare Pairing..."
@@ -160,43 +101,18 @@ def run_wa_bridge():
         elif "PYTHON_EVENT:MSG_IN|" in line:
             try:
                 parts = line.split('PYTHON_EVENT:MSG_IN|')[1].split('|')
-                jid = parts[0]
-                prompt = parts[1] if parts[1] else "Analizează această imagine."
-                img_data = parts[2] if len(parts) > 2 else ""
-
-                print(f"📩 Procesare pentru {jid}")
-
+                jid, prompt, img = parts[0], parts[1], parts[2]
                 payload = []
-                if img_data:
-                    payload.append({"mime_type": "image/jpeg", "data": base64.b64decode(img_data)})
-                payload.append(prompt)
-
-                ai_reply = get_ai_response(payload)
-
-                reply_cmd = json.dumps({"action": "send", "to": jid, "text": ai_reply})
-                wa_process.stdin.write(reply_cmd + "\n")
+                if img: payload.append({"mime_type": "image/jpeg", "data": base64.b64decode(img)})
+                payload.append(prompt if prompt else "Analizează imaginea.")
+                reply = get_ai_response(payload)
+                wa_process.stdin.write(json.dumps({"action": "send", "to": jid, "text": reply}) + "\\n")
                 wa_process.stdin.flush()
-                print(f"✅ Trimis către {jid}")
-            except Exception as e:
-                print(f"❌ Eroare: {e}")
+            except: pass
 
 @app.route('/')
-@app.route('/login')
-def dashboard():
-    return render_template_string('''
-        <body style="text-align: center; font-family: sans-serif; padding-top: 50px; background: #f0f2f5;">
-            <div style="background: white; display: inline-block; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                <h1 style="color: #075E54;">WhatsApp Gemini AI</h1>
-                <p>Status: <strong style="color: {{ 'green' if status == 'CONECTAT' else 'orange' }};">{{status}}</strong></p>
-                {% if status != "CONECTAT" and code != "Se generează..." %}
-                    <div style="background: #e1ffeb; padding: 20px; border-radius: 10px; margin: 20px 0;">
-                        <span style="font-size: 3em; letter-spacing: 5px; font-weight: bold; color: #128C7E;">{{code}}</span>
-                    </div>
-                {% endif %}
-            </div>
-            <script>setTimeout(() => location.reload(), 15000);</script>
-        </body>
-    ''', status=bot_status, code=pairing_code)
+def dash():
+    return render_template_string('<h1>Status: {{s}}</h1><h2>Cod: {{c}}</h2>', s=bot_status, c=pairing_code)
 
 if __name__ == "__main__":
     threading.Thread(target=run_wa_bridge, daemon=True).start()
